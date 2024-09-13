@@ -1,34 +1,52 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const http = require('http');
-const socketIO = require('socket.io');
+const webrtc = require('wrtc');
 
-// Initialize the Express application
 const app = express();
+let senderStream;
 
-// Create an HTTP server and bind it to the Express app
-const server = http.Server(app);
-const io = socketIO(server);
-
-// Use environment variable for port or default to 3000
-const port = process.env.PORT || 3000;
-
-// Serve static files from the "public" directory
 app.use(express.static('public'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Define a route to serve the main HTML file
-app.get("/stream", (req, res) => {
-    res.sendFile('public/index.html', { root: __dirname });
+app.post('/consumer', async (req, res) => {
+    const peer = new webrtc.RTCPeerConnection({
+        iceServers: [
+            { urls: 'stun:stun.stunprotocol.org' }
+        ]
+    });
+
+    const desc = new webrtc.RTCSessionDescription(req.body.sdp);
+    await peer.setRemoteDescription(desc);
+
+    if (senderStream) {
+        senderStream.getTracks().forEach(track => peer.addTrack(track, senderStream));
+    }
+
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+
+    res.json({ sdp: peer.localDescription });
 });
 
-// Start the server and bind it to all network interfaces (0.0.0.0)
-server.listen(port, '0.0.0.0', () => {
-    console.log(`Server started: 0.0.0.0:${port}`);
+app.post('/broadcast', async (req, res) => {
+    const peer = new webrtc.RTCPeerConnection({
+        iceServers: [
+            { urls: 'stun:stun.stunprotocol.org' }
+        ]
+    });
+
+    peer.ontrack = (event) => {
+        senderStream = event.streams[0];
+    };
+
+    const desc = new webrtc.RTCSessionDescription(req.body.sdp);
+    await peer.setRemoteDescription(desc);
+
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+
+    res.json({ sdp: peer.localDescription });
 });
 
-// Load additional routes and socket events
-require("./src/Route/route")(app);
-require("./src/Socket/socketEvent")(io);
-require("./src/Socket/socketFunction").init(io);
+app.listen(5000, () => console.log('Server started on port 5000'));
