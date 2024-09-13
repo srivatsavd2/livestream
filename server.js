@@ -1,9 +1,13 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const cors = require('cors'); // Import the cors package
 const webrtc = require('wrtc');
 
 const app = express();
 let senderStream;
+
+// Enable CORS for all origins (adjust for production as needed)
+app.use(cors());
 
 app.use(express.static('public'));
 app.use(bodyParser.json());
